@@ -1,0 +1,54 @@
+#!/usr/bin/env sh
+# Lightweight Gradle bootstrap script
+# Downloads the requested Gradle distribution and runs the included gradle binary.
+
+set -e
+
+# Read distribution URL from gradle/wrapper/gradle-wrapper.properties if present
+WRAPPER_PROPS="$(dirname "$0")/gradle/wrapper/gradle-wrapper.properties"
+DIST_URL="https://services.gradle.org/distributions/gradle-7.5.1-bin.zip"
+if [ -f "$WRAPPER_PROPS" ]; then
+  DIST_URL="$(grep -E '^distributionUrl=' "$WRAPPER_PROPS" | cut -d'=' -f2-)"
+fi
+
+CACHE_DIR="$HOME/.gradle/wrapper/dists"
+DIST_NAME=$(basename "$DIST_URL")
+UNZIP_DIR="$CACHE_DIR/${DIST_NAME%.zip}"
+
+# Create caches
+mkdir -p "$CACHE_DIR"
+
+if [ ! -d "$UNZIP_DIR" ]; then
+  echo "Downloading Gradle distribution: $DIST_URL"
+  TMPZIP="/tmp/$DIST_NAME"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fSL -o "$TMPZIP" "$DIST_URL"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$TMPZIP" "$DIST_URL"
+  else
+    echo "Please install curl or wget to download Gradle." >&2
+    exit 1
+  fi
+  echo "Extracting to $UNZIP_DIR"
+  mkdir -p "$UNZIP_DIR"
+  unzip -q "$TMPZIP" -d "$CACHE_DIR"
+  # unzip extracts to $CACHE_DIR/gradle-<version>/; move to $UNZIP_DIR if different
+  EXTRACTED_DIR=$(basename "$DIST_NAME" .zip)
+  if [ -d "$CACHE_DIR/$EXTRACTED_DIR" ]; then
+    mv "$CACHE_DIR/$EXTRACTED_DIR" "$UNZIP_DIR" 2>/dev/null || true
+  fi
+  rm -f "$TMPZIP"
+fi
+
+GRADLE_BIN="$UNZIP_DIR/bin/gradle"
+if [ ! -x "$GRADLE_BIN" ]; then
+  chmod +x "$GRADLE_BIN" || true
+fi
+
+if [ ! -x "$GRADLE_BIN" ]; then
+  echo "Gradle binary not found in $UNZIP_DIR/bin/gradle" >&2
+  exit 1
+fi
+
+# Execute the gradle binary with passed arguments
+exec "$GRADLE_BIN" "$@"
